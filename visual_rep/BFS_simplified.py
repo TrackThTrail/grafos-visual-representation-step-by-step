@@ -1,33 +1,28 @@
-#grafo é lista de adjacencias
-
-# grafo = {
-#     1: [2,3],
-#     2: [3,4],
-#     3: []..
-# }
+BRANCO, CINZA, PRETO = 0, 1, 2
 
 def bfs(grafo, s):
-    ja_pintados = []
+    cor  = {u: BRANCO for u in grafo}
+    dist = {u: float("inf") for u in grafo}
+    pai  = {u: None for u in grafo}
+
     Q = []
-    for u in grafo:
-        for v in grafo[u]:
-            if v != s and v not in ja_pintados:
-                v.cor = BRANCO
-                v.pai = None
-                v.d = -1
-                ja_pintados.append(v)
-    
-    s.cor = CINZA
-    s.d = 0
+    cor[s] = CINZA
+    dist[s] = 0
     Q.append(s)
 
-    while len(Q) > 0:
+    while Q:
         vert = Q.pop(0)
         for v in grafo[vert]:
-            if v.cor == BRANCO:
-                v.cor = CINZA
-                v.d = vert.d + 1
-                v.pai = vert
+            if cor[v] == BRANCO:
+                cor[v] = CINZA
+                dist[v] = dist[vert] + 1
+                pai[v] = vert
                 Q.append(v)
-        vert.cor = PRETO
+        cor[vert] = PRETO
 
+    return cor, dist, pai
+
+
+grafo = {1: [2, 3], 2: [3, 4], 3: [], 4: []}
+cor, dist, pai = bfs(grafo, 1)
+print(dist)
