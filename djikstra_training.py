@@ -16,12 +16,10 @@ def djikstra(grafo, root):
         for vizinho, peso in grafo[node]:
             if dist[node] + peso < dist[vizinho]: #custa menos, relaxa a aresta
                 dist[vizinho] = dist[node] + peso
-                pai[v] = node
-                heapq.heappush(heap, (dist[v], v))
+                pai[vizinho] = node
+                heapq.heappush(heap, (dist[vizinho], vizinho))
 
     return dist, pai
-
-
 
 
 grafo = {

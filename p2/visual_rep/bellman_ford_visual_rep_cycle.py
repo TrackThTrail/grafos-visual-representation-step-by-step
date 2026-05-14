@@ -39,9 +39,8 @@ def bellman_ford(adj, W, r):
 
 def bellman_ford_passos(adj, W, r):
     """
-    Igual ao Bellman-Ford, mas grava um snapshot a cada inspeção de aresta.
-    Retorna lista de passos, cada um sendo um dict com:
-        L, pai, iter_, u, v, melhorou, concluido, descricao
+    Igual ao Bellman-Ford, mas grava um snapshot a cada inspeção de aresta,
+    incluindo a fase de detecção de ciclo negativo aresta por aresta.
     """
     n   = len(adj)
     L   = [float("inf")] * n
@@ -50,19 +49,21 @@ def bellman_ford_passos(adj, W, r):
 
     passos = []
 
-    def snap(iter_, u, v, melhorou, concluido, descricao):
+    def snap(iter_, u, v, melhorou, concluido, ciclo_detectado, fase, descricao):
         passos.append({
-            "L":         list(L),
-            "pai":       list(pai),
-            "iter_":     iter_,       # valor de _ no for externo
-            "u":         u,           # valor de u no for do meio
-            "v":         v,           # valor de v no for interno
-            "melhorou":  melhorou,
-            "concluido": concluido,
-            "descricao": descricao,
+            "L":               list(L),
+            "pai":             list(pai),
+            "iter_":           iter_,
+            "u":               u,
+            "v":               v,
+            "melhorou":        melhorou,
+            "concluido":       concluido,
+            "ciclo_detectado": ciclo_detectado,
+            "fase":            fase,
+            "descricao":       descricao,
         })
 
-    snap(None, None, None, False, False,
+    snap(None, None, None, False, False, False, "relaxamento",
          f"Início: L[{r}]=0, todos os outros L=∞")
 
     for _ in range(n - 1):
@@ -73,18 +74,30 @@ def bellman_ford_passos(adj, W, r):
                 if nova < L[v]:
                     L[v]   = nova
                     pai[v] = u
-                    snap(_, u, v, True, False,
+                    snap(_, u, v, True, False, False, "relaxamento",
                          f"_={_}  u={u}  v={v}  →  L[{v}] = {L[v]}  (melhora!)")
                 else:
-                    snap(_, u, v, False, False,
+                    snap(_, u, v, False, False, False, "relaxamento",
                          f"_={_}  u={u}  v={v}  →  L[{v}]={L[v]} já ≤ {nova}, sem melhora")
 
-    ciclo_neg = any(L[u] + W[(u, v)] < L[v] for u in range(n) for v in adj[u])
-    snap(None, None, None, False, True,
-         "Ciclo negativo detectado!" if ciclo_neg
-         else "Concluído! Distâncias mínimas encontradas")
+    # ── fase de detecção de ciclo aresta por aresta ────────────────────────
+    snap(None, None, None, False, False, False, "deteccao",
+         "Relaxamento concluído — iniciando detecção de ciclo negativo")
 
-    return passos, ciclo_neg
+    for u in range(n):
+        for v in adj[u]:
+            w = W[(u, v)]
+            if L[u] + w < L[v]:
+                snap(None, u, v, True, True, True, "deteccao",
+                     f"CICLO NEGATIVO! L[{u}]+{w:+d} = {L[u]+w} < L[{v}]={L[v]}")
+                return passos, True
+            else:
+                snap(None, u, v, False, False, False, "deteccao",
+                     f"Detecção: ({u}→{v}) L[{u}]+{w:+d} = {L[u]+w} ≥ L[{v}]={L[v]}, ok")
+
+    snap(None, None, None, False, True, False, "deteccao",
+         "Nenhum ciclo negativo detectado — distâncias corretas")
+    return passos, False
 
 
 def caminho(pai, r, v):
@@ -98,34 +111,23 @@ def caminho(pai, r, v):
 
 # ── Exemplo de uso ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Caminho: 4 → 3 → 2 → 1 → 0  (sentido INVERSO à ordem de varredura de u)
-    # Aresta negativa: 2→1  (w=-3)
+    # Ciclo negativo:  1 → 2 → 3 → 1  com custo 3 + (-5) + 1 = -1
     #
-    # Porque este grafo é ideal para visualizar Bellman-Ford:
-    #   o loop percorre u = 0,1,2,3,4, mas o caminho vai de 4 para 0.
-    #   Logo, em cada iteração _ apenas UMA nova melhoria ocorre:
-    #     _=0 → u=4 melhora L[3]
-    #     _=1 → u=3 melhora L[2]
-    #     _=2 → u=2 melhora L[1]  ← aresta negativa!
-    #     _=3 → u=1 melhora L[0]
-    n   = 5
-    adj = [[], [0], [1], [2], [3]]
-    W   = {(4,3): 1, (3,2): 2, (2,1): -3, (1,0): 4}
-    r   = 4
+    #   0 → 1  (w=2)
+    #   1 → 2  (w=3)
+    #   2 → 3  (w=-5)  ← peso negativo
+    #   3 → 1  (w=1)   ← fecha o ciclo
+    #
+    # A cada volta pelo ciclo L[1], L[2], L[3] diminuem 1 → nunca convergem.
+    # O for de detecção pega isso na V-ésima iteração.
+    n   = 4
+    adj = [[1], [2], [3], [1]]
+    W   = {(0,1): 2, (1,2): 3, (2,3): -5, (3,1): 1}
+    r   = 0
 
     L, pai, ciclo_neg = bellman_ford(adj, W, r)
-
-    print(f"Bellman-Ford a partir do vértice {r}\n")
-    print(f"{'Vértice':>8} | {'L[v]':>9} | {'pai[v]':>7}")
-    print("-" * 32)
-    for v in range(n):
-        d = L[v] if L[v] != float("inf") else "∞"
-        p = pai[v] if pai[v] != -1 else "-"
-        print(f"{v:>8} | {str(d):>9} | {str(p):>7}")
-
-    print(f"\nCiclo negativo: {ciclo_neg}")
-    destino = 4
-    print(f"Caminho de {r} até {destino}: {caminho(pai, r, destino)}")
+    print("Ciclo negativo:", ciclo_neg)
+    print("L:", L)
 
     # ── Navegação por botões ──────────────────────────────────────────────────
     from matplotlib.widgets import Button
@@ -137,13 +139,14 @@ if __name__ == "__main__":
         for v in adj[u]:
             Gnx.add_edge(u, v, weight=W[(u, v)])
 
-    pos         = nx.spring_layout(Gnx, seed=7)
+    pos         = nx.spring_layout(Gnx, seed=42)
     nos         = list(Gnx.nodes())
     edge_labels = {(u, v): d["weight"] for u, v, d in Gnx.edges(data=True)}
 
     COR_BRANCO = "#FFFFFF"   # L = ∞ (não alcançado)
     COR_CINZA  = "#F4A460"   # L < ∞ (alcançado)
     COR_PRETO  = "#4169E1"   # finalizado
+    COR_CICLO  = "#FF4444"   # vértice do ciclo negativo detectado
 
     COR_BORDA_U      = "#FF0000"
     COR_BORDA_V      = "#FFD700"
@@ -160,6 +163,8 @@ if __name__ == "__main__":
     btn_next = Button(ax_next, "Avançar  ▶",    color="#CCFFCC", hovercolor="#99FF99")
 
     def _cor_no(v, p):
+        if p["ciclo_detectado"] and v in (p["u"], p["v"]):
+            return COR_CICLO
         if p["concluido"]:
             return COR_PRETO if p["L"][v] < float("inf") else COR_BRANCO
         return COR_BRANCO if p["L"][v] == float("inf") else COR_CINZA
@@ -194,7 +199,12 @@ if __name__ == "__main__":
                                edge_color="#4169E1", width=3,
                                arrows=True, arrowsize=18, ax=ax)
         if aresta_ativa:
-            cor_ativa = "#00CC44" if p["melhorou"] else "#FFD700"
+            if p["ciclo_detectado"]:
+                cor_ativa = "#FF0000"
+            elif p["melhorou"]:
+                cor_ativa = "#00CC44"
+            else:
+                cor_ativa = "#FFD700"
             nx.draw_networkx_edges(Gnx, pos, edgelist=aresta_ativa,
                                    edge_color=cor_ativa, width=3, style="dashed",
                                    arrows=True, arrowsize=18, ax=ax)
@@ -212,8 +222,10 @@ if __name__ == "__main__":
         nx.draw_networkx_labels(Gnx, pos_acima, labels=labels_L,
                                 font_size=8, font_color="dimgray", ax=ax)
 
-        ax.set_title(f"Passo {frame + 1}/{len(passos)}\n{p['descricao']}",
-                     fontsize=12, fontweight="bold")
+        fase_str  = "[ DETECÇÃO DE CICLO ]" if p["fase"] == "deteccao" else ""
+        titulo_cor = "#CC0000" if p["ciclo_detectado"] else "black"
+        ax.set_title(f"Passo {frame + 1}/{len(passos)}  {fase_str}\n{p['descricao']}",
+                     fontsize=12, fontweight="bold", color=titulo_cor)
 
         # ── caixa de variáveis do loop ──────────────────────────────────────
         iter_str = str(p["iter_"]) if p["iter_"] is not None else "—"
@@ -236,11 +248,11 @@ if __name__ == "__main__":
             mpatches.Patch(facecolor=COR_BRANCO, edgecolor="#333", label="Não alcançado (L=∞)"),
             mpatches.Patch(facecolor=COR_CINZA,  edgecolor="#333", label="Alcançado"),
             mpatches.Patch(facecolor=COR_PRETO,  edgecolor="#333", label="Finalizado"),
-            mpatches.Patch(color="#FF0000", label="Nó u (fonte da aresta)"),
-            mpatches.Patch(color="#FFD700", label="Nó v (destino da aresta)"),
+            mpatches.Patch(facecolor=COR_CICLO,  edgecolor="#333", label="Vértice do ciclo negativo"),
+            mpatches.Patch(color="#FF0000", label="Nó u / ciclo detectado"),
+            mpatches.Patch(color="#FFD700", label="Nó v (destino)"),
             mpatches.Patch(color="#4169E1", label="Árvore de caminhos mínimos"),
             mpatches.Patch(color="#00CC44", label="Relaxamento com melhoria"),
-            mpatches.Patch(color="#FFD700", label="Relaxamento sem melhoria"),
         ]
         ax.legend(handles=patches, loc="upper left", fontsize=8)
         ax.axis("off")
